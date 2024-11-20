@@ -35,6 +35,9 @@
 
 /* USER CODE END PD */
 
+#define PCF8591_ADDRESS 0x48 << 1
+
+
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
@@ -62,6 +65,8 @@ ETH_TxPacketConfig TxConfig;
 
 ETH_HandleTypeDef heth;
 
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart3;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -76,8 +81,10 @@ static void MX_GPIO_Init(void);
 static void MX_ETH_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t PCF8591_ReadAnalog(uint8_t channel);
+void SendMessage(uint8_t value, uint8_t port);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,7 +93,7 @@ static void MX_USB_OTG_FS_PCD_Init(void);
 int counter = 0;
 int ledStatus = 0;
 
-char rx_buffer[5];
+char rx_buffer[9];
 char execute_flag = '0';
 
 char tabela[3][30] = {
@@ -129,82 +136,22 @@ int main(void)
   MX_ETH_Init();
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
-
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Receive_IT(&huart3, rx_buffer, sizeof(rx_buffer));
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_UART_Receive_IT(&huart3, rx_buffer, sizeof(rx_buffer));
-
-	  ExecuteProgram();
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
-
 }
-
-void ExecuteProgram()
-{
-	if(execute_flag == '1'){
-		SendCount();
-	}
-	else if(execute_flag == '2'){
-		ClearCount();
-	}
-	else if(execute_flag == '3'){
-		GetTable();
-	}
-	else if(execute_flag == '4'){
-		BrickLed(GPIOB, GPIO_PIN_14);
-	}
-	else if(execute_flag == '5'){
-		BrickLed(GPIOB, GPIO_PIN_0);
-	}
-	else if(execute_flag == '6'){
-		BrickLed(GPIOE, GPIO_PIN_1);
-	}
-}
-
-void SendCount()
-{
-	char counterMessage[5];
-	snprintf(counterMessage, 3, "%d\r\n", counter);
-	HAL_UART_Transmit_IT(&huart3, (uint8_t *)counterMessage, strlen(counterMessage));
-	execute_flag = '0';
-}
-
-void ClearCount()
-{
-	counter = 0;
-	char counterMessage[3];
-	snprintf(counterMessage, 3, "%d\r\n", counter);
-	HAL_UART_Transmit_IT(&huart3, (uint8_t *)counterMessage, strlen(counterMessage));
-	execute_flag = '0';
-}
-
-
-void BrickLed(GPIO_TypeDef *porta, uint16_t portaPino)
-{
-	ledStatus = (ledStatus == 0) ? 1 : 0;
-	HAL_GPIO_WritePin(porta, portaPino, ledStatus);
-	execute_flag = '0';
-}
-
-void GetTable(){
-	for (int i = 0; i < 3; i++) {
-		HAL_UART_Transmit_IT(&huart3, (uint8_t *)tabela[i], strlen(tabela[i]));
-		HAL_Delay(100);
-	}
-	execute_flag = '0';
-}
-
 
 /**
   * @brief System Clock Configuration
@@ -312,6 +259,54 @@ static void MX_ETH_Init(void)
   /* USER CODE BEGIN ETH_Init 2 */
 
   /* USER CODE END ETH_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x10707DBC;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -481,25 +476,77 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-
-  if (strncmp(rx_buffer, "Sends", 5) == 0) {
+	/*
+	if (strncmp(rx_buffer, "Sends", 5) == 0) {
 	  execute_flag = '1';
-  }
-  if (strncmp(rx_buffer, "Clear", 5) == 0) {
+	}
+	if (strncmp(rx_buffer, "Clear", 5) == 0) {
 	  execute_flag = '2';
-  }
-  if (strncmp(rx_buffer, "Table", 5) == 0) {
+	}
+	if (strncmp(rx_buffer, "Table", 5) == 0) {
 	  execute_flag = '3';
-  }
-  if (strncmp(rx_buffer, "Led_R", 5) == 0) {
+	}
+	if (strncmp(rx_buffer, "Led_R", 5) == 0) {
 	  execute_flag = '4';
-  }
-  if (strncmp(rx_buffer, "Led_G", 5) == 0) {
+	}
+	if (strncmp(rx_buffer, "Led_G", 5) == 0) {
 	  execute_flag = '5';
-  }
-  if (strncmp(rx_buffer, "Led_B", 5) == 0) {
+	}
+	if (strncmp(rx_buffer, "Led_B", 5) == 0) {
 	  execute_flag = '6';
-  }
+	}
+	*/
+
+	if (strncmp(rx_buffer, "Read_AIN0", 9) == 0)
+	{
+		uint8_t Anal = 0;
+		uint8_t LDR = PCF8591_ReadAnalog(Anal);
+
+		SendMessage(LDR, Anal);
+	}
+
+	if (strncmp(rx_buffer, "Read_AIN1", 9) == 0)
+	{
+		uint8_t Anal = 1;
+		uint8_t Temp = PCF8591_ReadAnalog(Anal);
+
+		SendMessage(Temp, Anal);
+	}
+
+	if (strncmp(rx_buffer, "Read_AIN3", 9) == 0)
+	{
+		uint8_t Anal = 3;
+		uint8_t Pot = PCF8591_ReadAnalog(Anal);
+
+		SendMessage(Pot, Anal);
+	}
+
+	HAL_UART_Receive_IT(&huart3, rx_buffer, sizeof(rx_buffer));
+}
+
+
+void SendMessage(uint8_t value, uint8_t port)
+{
+	char message[10];
+
+	sprintf(message, "AIN%d: %d\r\n", port, value);
+
+	HAL_UART_Transmit(&huart3, (uint8_t*)message, strlen(message), HAL_MAX_DELAY);
+}
+
+uint8_t PCF8591_ReadAnalog(uint8_t channel)
+{
+	uint8_t config_byte = 0x40 | (channel & 0x03); // Select the channel (A0, A1, A2, A3)
+	uint8_t analog_data[2];
+
+	// Send configuration byte to select the ADC channel
+	HAL_I2C_Master_Transmit(&hi2c1, PCF8591_ADDRESS, &config_byte, 1, 1000);
+
+	// Read two bytes: first byte is a dummy, second byte is the actual analog value
+	HAL_I2C_Master_Receive(&hi2c1, PCF8591_ADDRESS, analog_data, 2, 1000);
+
+	// Return the second byte which contains the valid ADC reading
+	return analog_data[1];
 }
 
 /* USER CODE END 4 */
