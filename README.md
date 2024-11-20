@@ -1,1 +1,1 @@
-# FirstUARTProject
+# I2C Project
